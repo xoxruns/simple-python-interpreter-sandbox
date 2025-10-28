@@ -25,6 +25,48 @@ router.post("/runscript", async (ctx) => {
   }
 });
 
+router.post("/checkpackages", async (ctx) => {
+  try {
+    const { directory, packages } = await ctx.request.body.json();
+
+    if (!packages || !Array.isArray(packages)) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "'packages' array is required" };
+      return;
+    }
+
+    const instance = new PythonInstance(directory ?? "./");
+    const results = await instance.checkPackages(packages);
+
+    ctx.response.status = 200;
+    ctx.response.body = { results };
+  } catch (err) {
+    ctx.response.status = 500;
+    ctx.response.body = { error: String(err?.message ?? err) };
+  }
+});
+
+router.post("/installpackages", async (ctx) => {
+  try {
+    const { directory, packages } = await ctx.request.body.json();
+
+    if (!packages || !Array.isArray(packages)) {
+      ctx.response.status = 400;
+      ctx.response.body = { error: "'packages' array is required" };
+      return;
+    }
+
+    const instance = new PythonInstance(directory ?? "./");
+    const results = await instance.installPackages(packages);
+
+    ctx.response.status = 200;
+    ctx.response.body = { results };
+  } catch (err) {
+    ctx.response.status = 500;
+    ctx.response.body = { error: String(err?.message ?? err) };
+  }
+});
+
 const app = new Application();
 app.use(router.routes());
 app.use(router.allowedMethods());
