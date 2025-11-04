@@ -1,7 +1,9 @@
 import { Application, Router } from "@oak/oak";
-import { PythonInstance } from "./interpreter";
+import { PythonInstance } from "./interpreter.ts";
 
 const router = new Router();
+const python_sb = new PythonInstance();
+await python_sb.load_pyodide();
 
 router.post("/runscript", async (ctx) => {
   try {
@@ -13,9 +15,8 @@ router.post("/runscript", async (ctx) => {
       return;
     }
 
-    const instance = new PythonInstance(directory ?? "./");
     const pyodidePath = filename.startsWith("/mnt") ? filename : `/mnt/${filename}`;
-    const { result, stdout, stderr } = await instance.runFile(pyodidePath);
+    const { result, stdout, stderr } = await python_sb.runFile(pyodidePath, directory);
 
     ctx.response.status = 200;
     ctx.response.body = { result, stdout, stderr };
@@ -24,6 +25,22 @@ router.post("/runscript", async (ctx) => {
     ctx.response.body = { error: String(err?.message ?? err) };
   }
 });
+
+router.post("/setdirectory", async (ctx) => {
+  try {
+    const { directory } = await ctx.request.body.json()
+    // set directory
+    await python_sb.initialize_instance(directory);
+    ctx.response.status = 200;
+    ctx.response.body = { current_directory : directory }
+    
+  } catch (err) {
+    ctx.response.status = 500;
+    ctx.response.body = {
+      error : String(err?.message ?? err)
+    }
+  }
+})
 
 router.post("/checkpackages", async (ctx) => {
   try {
@@ -35,8 +52,7 @@ router.post("/checkpackages", async (ctx) => {
       return;
     }
 
-    const instance = new PythonInstance(directory ?? "./");
-    const results = await instance.checkPackages(packages);
+    const results = await python_sb.checkPackages(packages, directory);
 
     ctx.response.status = 200;
     ctx.response.body = { results };
@@ -56,8 +72,7 @@ router.post("/installpackages", async (ctx) => {
       return;
     }
 
-    const instance = new PythonInstance(directory ?? "./");
-    const results = await instance.installPackages(packages);
+    const results = await python_sb.installPackages(packages, directory);
 
     ctx.response.status = 200;
     ctx.response.body = { results };
@@ -71,6 +86,6 @@ const app = new Application();
 app.use(router.routes());
 app.use(router.allowedMethods());
 
-const port = Number(Deno.env.get("PORT") ?? 45555);
+const port = Number(45555);
 console.log(`Server running on http://localhost:${port}`);
 await app.listen({ port });

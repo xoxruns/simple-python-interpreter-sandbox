@@ -88,7 +88,11 @@ To create a standalone executable:
 deno compile --allow-read --allow-net --allow-env --output python-sandbox-tool python_sandbox_tool/main.ts
 ```
 
-This creates a self-contained binary that doesn't require Deno to be installed.
+This creates a self-contained binary that doesn't require Deno to be installed. The binary includes all dependencies and can be run directly:
+
+```bash
+./python-sandbox-tool
+```
 
 ## Limitations
 
