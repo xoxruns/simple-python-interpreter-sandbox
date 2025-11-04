@@ -4,7 +4,8 @@ on:
   push:
     tags:
       - "v*.*.*"
-      - "main"
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -60,7 +61,15 @@ jobs:
           file "${{ env.binary_name }}" || true
           shasum -a 256 "${{ env.binary_name }}" 2>/dev/null || (sha256sum "${{ env.binary_name }}" || true)
 
+      - name: Upload build as artifact (for branch builds)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.os_name }}-binary
+          path: ${{ env.binary_name }}
+
       - name: Upload to GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: softprops/action-gh-release@v2
         with:
           files: |
