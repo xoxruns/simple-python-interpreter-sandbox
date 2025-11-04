@@ -1,0 +1,71 @@
+name: Release binaries
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "main"
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build and attach binaries
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os_name: linux
+            ext: ""
+          - os: macos-latest
+            os_name: macos
+            ext: ""
+          - os: windows-latest
+            os_name: windows
+            ext: ".exe"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v1.x
+
+      - name: Deno cache
+        run: deno cache python_sandbox_tool/main.ts
+
+      - name: Compile binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          BINARY_NAME="python-sandbox-tool-${{ matrix.os_name }}${{ matrix.ext }}"
+          deno compile \
+            --allow-read \
+            --allow-net \
+            --allow-env \
+            --allow-write \
+            --include python_sandbox_tool/ \
+            --output "$BINARY_NAME" \
+            python_sandbox_tool/main.ts
+          echo "binary_name=$BINARY_NAME" >> "$GITHUB_ENV"
+
+      - name: Show binary info
+        shell: bash
+        run: |
+          ls -lah
+          file "${{ env.binary_name }}" || true
+          shasum -a 256 "${{ env.binary_name }}" 2>/dev/null || (sha256sum "${{ env.binary_name }}" || true)
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.binary_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
