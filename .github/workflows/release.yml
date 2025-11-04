@@ -34,7 +34,7 @@ jobs:
       - name: Setup Deno
         uses: denoland/setup-deno@v2
         with:
-          deno-version: v1.x
+          deno-version: v2.5.4
 
       - name: Deno cache
         run: deno cache python_sandbox_tool/main.ts
