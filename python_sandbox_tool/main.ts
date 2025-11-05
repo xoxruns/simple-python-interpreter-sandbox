@@ -7,7 +7,7 @@ await python_sb.load_pyodide();
 
 router.post("/runscript", async (ctx) => {
   try {
-    const { directory, filename } = await ctx.request.body.json();
+    const { filename } = await ctx.request.body.json();
 
     if (!filename) {
       ctx.response.status = 400;
@@ -16,7 +16,7 @@ router.post("/runscript", async (ctx) => {
     }
 
     const pyodidePath = filename.startsWith("/mnt") ? filename : `/mnt/${filename}`;
-    const { result, stdout, stderr } = await python_sb.runFile(pyodidePath, directory);
+    const { result, stdout, stderr } = await python_sb.runFile(pyodidePath);
 
     ctx.response.status = 200;
     ctx.response.body = { result, stdout, stderr };
@@ -44,7 +44,7 @@ router.post("/setdirectory", async (ctx) => {
 
 router.post("/checkpackages", async (ctx) => {
   try {
-    const { directory, packages } = await ctx.request.body.json();
+    const { packages } = await ctx.request.body.json();
 
     if (!packages || !Array.isArray(packages)) {
       ctx.response.status = 400;
@@ -52,7 +52,7 @@ router.post("/checkpackages", async (ctx) => {
       return;
     }
 
-    const results = await python_sb.checkPackages(packages, directory);
+    const results = await python_sb.checkPackages(packages);
 
     ctx.response.status = 200;
     ctx.response.body = { results };
@@ -64,7 +64,7 @@ router.post("/checkpackages", async (ctx) => {
 
 router.post("/installpackages", async (ctx) => {
   try {
-    const { directory, packages } = await ctx.request.body.json();
+    const { packages } = await ctx.request.body.json();
 
     if (!packages || !Array.isArray(packages)) {
       ctx.response.status = 400;
@@ -72,7 +72,7 @@ router.post("/installpackages", async (ctx) => {
       return;
     }
 
-    const results = await python_sb.installPackages(packages, directory);
+    const results = await python_sb.installPackages(packages);
 
     ctx.response.status = 200;
     ctx.response.body = { results };

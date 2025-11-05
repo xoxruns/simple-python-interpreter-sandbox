@@ -24,7 +24,7 @@ export class PythonInstance {
         console.log(this.pyodide.FS.readdir("/home"));
     }
 
-    async runFile(filename: string, directory: string): Promise<{ result: unknown; stdout: string; stderr: string; }>
+    async runFile(filename: string): Promise<{ result: unknown; stdout: string; stderr: string; }>
     {
         console.log("running")
 
@@ -59,7 +59,7 @@ export class PythonInstance {
         }
     }
 
-    async checkPackages(packageNames: string[], directory: string): Promise<{ [packageName: string]: boolean }> {
+    async checkPackages(packageNames: string[]): Promise<{ [packageName: string]: boolean }> {
         // if (!this.pyodide) {
         //     await this.load_pyodide()
         // }
@@ -88,7 +88,7 @@ result
         return results;
     }
 
-    async installPackages(packageNames: string[], directory: string): Promise<{ [packageName: string]: { success: boolean; error?: string } }> {
+    async installPackages(packageNames: string[]): Promise<{ [packageName: string]: { success: boolean; error?: string } }> {
         // if (!this.pyodide) {
         //     await this.load_pyodide()
         // }

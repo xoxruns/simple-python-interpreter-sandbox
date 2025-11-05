@@ -2,12 +2,6 @@ import json
 import sys
 import requests
 
-# try:
-#     import requests  # type: ignore
-# except Exception as exc:  # pragma: no cover
-#     print(json.dumps({"error": f"requests not available: {exc}"}, ensure_ascii=False))
-#     raise
-
 
 def main():
     print("hello from python_file.py")
