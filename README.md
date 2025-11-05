@@ -31,53 +31,148 @@ deno run --allow-read --allow-net --allow-env python_sandbox_tool/main.ts
 
 ### API Endpoints
 
+#### Set Directory
+Sets the directory that will be mounted in the Python sandbox environment.
+
+**Request:**
+```bash
+POST /setdirectory
+Content-Type: application/json
+
+{
+  "directory": "/path/to/python/files"
+}
+```
+
+**Response:**
+```json
+{
+  "current_directory": "/path/to/python/files"
+}
+```
+
 #### Run a Python Script
+Executes a Python script from the mounted directory.
+
+**Request:**
 ```bash
 POST /runscript
 Content-Type: application/json
 
 {
-  "directory": "/path/to/python/files",
   "filename": "script.py"
 }
 ```
 
+**Response:**
+```json
+{
+  "result": <return_value>,
+  "stdout": "output from print statements",
+  "stderr": "error output if any"
+}
+```
+
+**Note:** The filename should be relative to the mounted directory. If the filename starts with `/mnt`, it will be used as-is; otherwise, it will be prefixed with `/mnt/`.
+
 #### Check if Packages Exist
+Checks whether specified Python packages are available in the sandbox.
+
+**Request:**
 ```bash
 POST /checkpackages
 Content-Type: application/json
 
 {
-  "directory": "/path/to/python/files",
   "packages": ["numpy", "pandas", "requests"]
 }
 ```
 
+**Response:**
+```json
+{
+  "results": {
+    "numpy": true,
+    "pandas": false,
+    "requests": true
+  }
+}
+```
+
 #### Install Python Packages
+Installs Python packages in the sandbox environment.
+
+**Request:**
 ```bash
 POST /installpackages
 Content-Type: application/json
 
 {
-  "directory": "/path/to/python/files",
   "packages": ["numpy", "matplotlib"]
 }
 ```
 
-### Example Usage
-
-1. Create a Python file (e.g., `test.py`):
-```python
-print("Hello from sandboxed Python!")
-import sys
-print(f"Python version: {sys.version}")
+**Response:**
+```json
+{
+  "results": {
+    "numpy": {
+      "success": true
+    },
+    "matplotlib": {
+      "success": false,
+      "error": "installation failed"
+    }
+  }
+}
 ```
 
-2. Run it:
+### Example Usage with curl
+
+1. **Set the working directory:**
+```bash
+curl -X POST http://localhost:45555/setdirectory \
+  -H "Content-Type: application/json" \
+  -d '{"directory": "/path/to/your/python/files"}'
+```
+
+2. **Install required packages:**
+```bash
+curl -X POST http://localhost:45555/installpackages \
+  -H "Content-Type: application/json" \
+  -d '{"packages": ["requests"]}'
+```
+
+3. **Check if packages are available:**
+```bash
+curl -X POST http://localhost:45555/checkpackages \
+  -H "Content-Type: application/json" \
+  -d '{"packages": ["numpy", "pandas", "requests"]}'
+```
+
+4. **Run a Python script:**
 ```bash
 curl -X POST http://localhost:45555/runscript \
   -H "Content-Type: application/json" \
-  -d '{"directory": "./", "filename": "test.py"}'
+  -d '{"filename": "test.py"}'
+```
+
+**Complete workflow example:**
+```bash
+# Set the directory
+curl -X POST http://localhost:45555/setdirectory \
+  -H "Content-Type: application/json" \
+  -d '{"directory": "./tests"}'
+
+# Install packages
+curl -X POST http://localhost:45555/installpackages \
+  -H "Content-Type: application/json" \
+  -d '{"packages": ["requests"]}'
+
+# Run a script
+curl -X POST http://localhost:45555/runscript \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "python_file.py"}'
 ```
 
 ## Building a Binary

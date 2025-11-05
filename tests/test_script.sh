@@ -11,12 +11,12 @@ PY_FILE="python_file.py"
 echo "==> Installing packages (requests)"
 curl -sS -X POST "${SERVER}/installpackages" \
   -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg dir "$TEST_DIR" '{directory:$dir, packages:["requests"]}')" | jq .
+  -d "$(jq -nc --arg dir "$TEST_DIR" '{packages:["requests"]}')" | jq .
 
 echo "==> Checking packages (numpy, pandas, requests)"
 curl -sS -X POST "${SERVER}/checkpackages" \
   -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg dir "$TEST_DIR" '{directory:$dir, packages:["requests"]}')" | jq .
+  -d "$(jq -nc --arg dir "$TEST_DIR" '{packages:["requests"]}')" | jq .
 
 echo "==> Setting directory"
 curl -sS -X POST "${SERVER}/setdirectory" \
@@ -26,7 +26,7 @@ curl -sS -X POST "${SERVER}/setdirectory" \
 echo "==> Running script ${PY_FILE}"
 curl -sS -X POST "${SERVER}/runscript" \
   -H 'Content-Type: application/json' \
-  -d "$(jq -nc --arg dir "$TEST_DIR" --arg file "$PY_FILE" '{directory:$dir, filename:$file}')" | jq .
+  -d "$(jq -nc --arg dir "$TEST_DIR" --arg file "$PY_FILE" '{filename:$file}')" | jq .
 
 echo "Done."
 
