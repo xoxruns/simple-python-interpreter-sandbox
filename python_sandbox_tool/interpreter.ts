@@ -1,5 +1,14 @@
 import { loadPyodide } from "pyodide";
 
+// Safe logging that handles broken pipe errors gracefully
+function safeLog(...args: unknown[]): void {
+    try {
+        console.log(...args);
+    } catch (_e) {
+        // Ignore EPIPE/broken pipe errors when stdout is closed
+    }
+}
+
 export class PythonInstance {
     directory: string;
     pyodide;
@@ -21,18 +30,18 @@ export class PythonInstance {
         let mountDir = "/mnt";
         this.pyodide.FS.mkdirTree(mountDir);
         this.pyodide.FS.mount(this.pyodide.FS.filesystems.NODEFS, {root: this.directory}, mountDir)
-        console.log(this.pyodide.FS.readdir("/home"));
+        safeLog(this.pyodide.FS.readdir("/home"));
     }
 
     async runFile(filename: string): Promise<{ result: unknown; stdout: string; stderr: string; }>
     {
-        console.log("running")
+        safeLog("running")
 
         const pathInfo = this.pyodide.FS.analyzePath(filename);
         if (!pathInfo.exists) {
             throw new Error(`File not found: ${filename}`);
         }
-        console.log(pathInfo)
+        safeLog(pathInfo)
 
         const stdoutChunks: string[] = [];
         const stderrChunks: string[] = [];
@@ -93,14 +102,14 @@ result
         //     await this.load_pyodide()
         // }
         // await this.initialize_instance(directory);
-        console.log("Starting install packages")
+        safeLog("Starting install packages")
         const results: { [packageName: string]: { success: boolean; error?: string } } = {};
 
         // Lazily load micropip only if needed
         let micropip: any | null = null;
 
         for (const packageName of packageNames) {
-            console.log("starting installing " + packageName)
+            safeLog("starting installing " + packageName)
             // First, try pyodide's built-in packages (faster, prebuilt on CDN)
             try {
                 await this.pyodide.loadPackage(packageName, );
@@ -141,7 +150,7 @@ result
         // Optionally, print installed packages when micropip is used
         try {
             if (micropip) {
-                console.log(micropip.list());
+                safeLog(micropip.list());
             }
         } catch (_e) {
             // ignore listing errors

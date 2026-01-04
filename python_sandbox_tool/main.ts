@@ -1,6 +1,15 @@
 import { Application, Router } from "@oak/oak";
 import { PythonInstance } from "./interpreter.ts";
 
+// Safe logging that handles broken pipe errors gracefully
+function safeLog(...args: unknown[]): void {
+    try {
+        console.log(...args);
+    } catch (_e) {
+        // Ignore EPIPE/broken pipe errors when stdout is closed
+    }
+}
+
 const router = new Router();
 const python_sb = new PythonInstance();
 await python_sb.load_pyodide();
@@ -87,5 +96,5 @@ app.use(router.routes());
 app.use(router.allowedMethods());
 
 const port = Number(45555);
-console.log(`Server running on http://localhost:${port}`);
+safeLog(`Server running on http://localhost:${port}`);
 await app.listen({ port });
