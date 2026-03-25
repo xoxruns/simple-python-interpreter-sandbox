@@ -1,0 +1,14 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "python-sandbox-client"
+version = "0.1.0"
+description = "Asyncio client for the Deno/Pyodide stdio Python sandbox worker"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[tool.hatch.build.targets.wheel]
+packages = ["python_sandbox_client"]

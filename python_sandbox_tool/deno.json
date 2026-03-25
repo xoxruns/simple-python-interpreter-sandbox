@@ -2,7 +2,7 @@
   "tasks": {
     "dev": "deno run --allow-env --allow-net --allow-read main.ts",
     "example": "deno run --allow-env --allow-net --allow-read example.ts",
-    "test": "deno test --allow-env --allow-net --allow-read"
+    "test": "deno test --allow-env --allow-net --allow-read --allow-run ../tests"
   },
   "imports": {
     "@oak/oak": "jsr:@oak/oak@^17.1.6",

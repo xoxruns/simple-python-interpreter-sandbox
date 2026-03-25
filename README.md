@@ -175,6 +175,89 @@ curl -X POST http://localhost:45555/runscript \
   -d '{"filename": "python_file.py"}'
 ```
 
+### Stdio worker (no HTTP server)
+
+If you prefer not to run an HTTP server, use the stdio worker. It loads Pyodide once, then reads **newline-delimited JSON** on **stdin** and writes **one JSON object per line** on **stdout**. Debug logs go to **stderr** so stdout stays machine-readable.
+
+Start it:
+
+```bash
+deno run --allow-env --allow-net --allow-read python_sandbox_tool/main_stdio.ts
+```
+
+Supported `op` values (each message is a single JSON object; include optional `id` for correlation):
+
+| `op` | Fields | Purpose |
+|------|--------|---------|
+| `setdirectory` | `directory` | Mount host directory at `/mnt` in the sandbox (call once per worker before other ops) |
+| `runscript` | `filename` | Run a file under the mounted directory (or use a path starting with `/mnt/`) |
+| `checkpackages` | `packages` | Array of package names to probe |
+| `installpackages` | `packages` | Array of package names to install |
+| `shutdown` | — | Stop the worker cleanly |
+
+Example (three requests then exit):
+
+```bash
+printf '%s\n' \
+  '{"op":"setdirectory","directory":"/absolute/path/to/python/files"}' \
+  '{"op":"runscript","filename":"script.py"}' \
+  '{"op":"shutdown"}' \
+| deno run --allow-env --allow-net --allow-read python_sandbox_tool/main_stdio.ts
+```
+
+### Python client (`python_sandbox_client`, asyncio)
+
+The repo includes a small **asyncio** client that spawns one or more stdio worker subprocesses and exposes a pool API (good for running many scripts with limited concurrency, e.g. five workers).
+
+**Requirements:** [Deno](https://deno.land/) on `PATH`, and [uv](https://docs.astral.sh/uv/) for installing the Python package.
+
+From the repository root:
+
+```bash
+uv sync
+```
+
+Example:
+
+```python
+import asyncio
+from pathlib import Path
+from python_sandbox_client import SandboxPool
+
+async def main():
+    scripts_dir = Path("/absolute/path/to/python/files")
+    async with SandboxPool(directory=scripts_dir, workers=5) as pool:
+        r = await pool.run_script("script.py")
+        print(r.stdout, r.stderr, r.result)
+
+        # concurrent runs (up to `workers` at a time)
+        out = await asyncio.gather(
+            pool.run_script("a.py"),
+            pool.run_script("b.py"),
+        )
+
+asyncio.run(main())
+```
+
+- **`directory`**: host folder whose files appear under `/mnt` in the sandbox (same idea as `POST /setdirectory`).
+- **`workers`**: number of separate Deno/Pyodide processes; use this for parallelism.
+- **`worker_ts`**: optional path to `main_stdio.ts`. If omitted, the client assumes the default layout next to this repo (`python_sandbox_tool/main_stdio.ts`).
+- **`SandboxPool`** also provides `check_packages(...)` and `install_packages(...)` mapped to the same stdio ops.
+
+**Smoke tests (after `uv sync`):**
+
+```bash
+uv run python tests/test_asyncio_sandbox_pool.py
+uv run python tests/test_stdio_worker_from_python.py
+```
+
+**Deno tests (stdio worker integration):**
+
+```bash
+cd python_sandbox_tool
+deno task test
+```
+
 ## Building a Binary
 
 To create a standalone executable:
@@ -188,6 +271,8 @@ This creates a self-contained binary that doesn't require Deno to be installed. 
 ```bash
 ./python-sandbox-tool
 ```
+
+To compile the stdio worker instead of the HTTP server, point `deno compile` at `python_sandbox_tool/main_stdio.ts` (same `--allow-*` flags as above).
 
 ## Limitations
 

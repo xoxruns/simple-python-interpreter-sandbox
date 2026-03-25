@@ -3,7 +3,9 @@ import { loadPyodide } from "pyodide";
 // Safe logging that handles broken pipe errors gracefully
 function safeLog(...args: unknown[]): void {
     try {
-        console.log(...args);
+        // Important: keep stdout clean for stdio-worker JSON protocol.
+        // Regular server users can still see logs via stderr.
+        console.error(...args);
     } catch (_e) {
         // Ignore EPIPE/broken pipe errors when stdout is closed
     }
@@ -112,7 +114,7 @@ result
             safeLog("starting installing " + packageName)
             // First, try pyodide's built-in packages (faster, prebuilt on CDN)
             try {
-                await this.pyodide.loadPackage(packageName, );
+                await this.pyodide.loadPackage(packageName);
                 // Verify import works
                 const ok = await this.pyodide.runPythonAsync(`\ntry:\n    import ${packageName}\n    result = True\nexcept Exception:\n    result = False\nresult\n`);
                 if (ok) {
