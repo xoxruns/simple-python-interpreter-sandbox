@@ -7,7 +7,7 @@ name = "python-sandbox-client"
 version = "0.1.0"
 description = "Asyncio client for the Deno/Pyodide stdio Python sandbox worker"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = []
 
 [tool.hatch.build.targets.wheel]
