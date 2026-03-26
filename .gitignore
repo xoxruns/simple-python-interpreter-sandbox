@@ -1,3 +1,5 @@
 python-sandbox-tool
 .venv/
-*.whl
+*.whl__pycache__/
+__pycache__/
+python_sandbox_client/__pycache__/
