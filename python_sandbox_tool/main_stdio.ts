@@ -29,6 +29,18 @@ function logErr(...args: unknown[]): void {
   }
 }
 
+function forceLogsToStderr(): void {
+  const original = console.log.bind(console);
+  console.log = (...args: unknown[]) => {
+    try {
+      console.error(...args);
+    } catch {
+      // Fall back to original behavior if stderr is unavailable.
+      original(...args);
+    }
+  };
+}
+
 async function writeJsonLine(obj: StdioResponse): Promise<void> {
   const enc = new TextEncoder();
   await Deno.stdout.write(enc.encode(JSON.stringify(obj) + "\n"));
@@ -61,6 +73,9 @@ async function readJsonLines(
 }
 
 async function runStdioWorker(): Promise<void> {
+  // Keep stdout reserved for JSON responses only.
+  forceLogsToStderr();
+
   const python_sb = new PythonInstance();
   await python_sb.load_pyodide();
 

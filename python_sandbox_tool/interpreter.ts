@@ -15,16 +15,43 @@ export class PythonInstance {
     directory: string;
     pyodide;
     cache_directory: string;
+    network_patched: boolean;
 
     constructor(directory = "./") {
         this.directory = directory;
         this.cache_directory = directory
+        this.network_patched = false;
     }
 
     async load_pyodide(): Promise<void> {
         this.pyodide = await loadPyodide({
             packageCacheDir: this.cache_directory
         });
+        await this.enableNetworkSupport();
+    }
+
+    /**
+     * Enable Python HTTP stack inside Pyodide.
+     * `requests` and urllib-based clients need pyodide-http patching
+     * to route networking through JS fetch in this WASM runtime.
+     */
+    async enableNetworkSupport(): Promise<void> {
+        if (this.network_patched) return;
+
+        try {
+            await this.pyodide.loadPackage("micropip");
+            const micropip = this.pyodide.pyimport("micropip");
+            await micropip.install("pyodide-http");
+            await this.pyodide.runPythonAsync(`
+import pyodide_http
+pyodide_http.patch_all()
+`);
+            this.network_patched = true;
+            safeLog("Network support enabled via pyodide-http");
+        } catch (error) {
+            // Keep sandbox usable even if network patch package fails to install.
+            safeLog("Could not enable network support:", error);
+        }
     }
 
     async initialize_instance(directory = "./"): Promise<void> {

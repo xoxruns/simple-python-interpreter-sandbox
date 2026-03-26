@@ -13,6 +13,7 @@ def start_worker(worker_path: str) -> tuple[subprocess.Popen, "queue.Queue[str]"
         "--allow-env",
         "--allow-net",
         "--allow-read",
+        "--allow-write",
         worker_path,
     ]
 

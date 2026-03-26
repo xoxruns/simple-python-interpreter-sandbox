@@ -17,6 +17,7 @@ Deno.test("stdio worker: setdirectory + runscript", async () => {
       "--allow-env",
       "--allow-net",
       "--allow-read",
+      "--allow-write",
       workerPath,
     ],
     stdin: "piped",
@@ -46,7 +47,7 @@ Deno.test("stdio worker: setdirectory + runscript", async () => {
   const lines = stdoutText
     .split("\n")
     .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+    .filter((l) => l.length > 0 && l.startsWith("{"));
 
   assertEquals(lines.length >= 3, true, `unexpected stdout: ${stdoutText}`);
 

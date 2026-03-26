@@ -59,6 +59,7 @@ class _StdioWorker:
             "--allow-env",
             "--allow-net",
             "--allow-read",
+            "--allow-write",
             str(self._worker_ts),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,

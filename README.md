@@ -24,7 +24,7 @@ The sandbox is protected through multiple layers:
 
 1. Start the server:
 ```bash
-deno run --allow-read --allow-net --allow-env python_sandbox_tool/main.ts
+deno run --allow-read --allow-net --allow-env --allow-write python_sandbox_tool/main.ts
 ```
 
 2. The server will start on `http://localhost:45555` (or the port specified in the `PORT` environment variable)
@@ -182,7 +182,7 @@ If you prefer not to run an HTTP server, use the stdio worker. It loads Pyodide 
 Start it:
 
 ```bash
-deno run --allow-env --allow-net --allow-read python_sandbox_tool/main_stdio.ts
+deno run --allow-env --allow-net --allow-read --allow-write python_sandbox_tool/main_stdio.ts
 ```
 
 Supported `op` values (each message is a single JSON object; include optional `id` for correlation):
@@ -202,7 +202,7 @@ printf '%s\n' \
   '{"op":"setdirectory","directory":"/absolute/path/to/python/files"}' \
   '{"op":"runscript","filename":"script.py"}' \
   '{"op":"shutdown"}' \
-| deno run --allow-env --allow-net --allow-read python_sandbox_tool/main_stdio.ts
+| deno run --allow-env --allow-net --allow-read --allow-write python_sandbox_tool/main_stdio.ts
 ```
 
 ### Python client (`python_sandbox_client`, asyncio)
