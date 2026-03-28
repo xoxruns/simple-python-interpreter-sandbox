@@ -7,13 +7,9 @@
         "strictNullChecks": true,
         "strictFunctionTypes": true,
         "sourceMap": true,
-        "typeRoots": [
-            "./python_sandbox_tool",
-            "./node_modules/@types"
-        ]
+        "skipLibCheck": true,
+        "noEmit": true
     },
-    "exclude": [
-        "node_modules",
-        "**/node_modules/*"
-    ]
+    "include": ["./**/*.ts"],
+    "exclude": ["node_modules", "**/node_modules/*"]
 }

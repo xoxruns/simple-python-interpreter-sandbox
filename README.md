@@ -240,15 +240,35 @@ asyncio.run(main())
 ```
 
 - **`directory`**: host folder whose files appear under `/mnt` in the sandbox (same idea as `POST /setdirectory`).
+- **`package_cache_dir`**: optional writable folder where Pyodide/micropip store downloaded wheels. Use this so packages are **not** written next to your scripts. If omitted, the worker uses the environment variable `PYODIDE_PACKAGE_CACHE_DIR`, or falls back to `~/.cache/python-sandbox-pyodide` (or `.pyodide-package-cache` in the current directory if no home directory is available).
 - **`workers`**: number of separate Deno/Pyodide processes; use this for parallelism.
 - **`worker_ts`**: optional path to `main_stdio.ts`. If omitted, the client assumes the default layout next to this repo (`python_sandbox_tool/main_stdio.ts`).
 - **`SandboxPool`** also provides `check_packages(...)` and `install_packages(...)` mapped to the same stdio ops.
+
+Example with scripts in one place and wheels in another:
+
+```python
+async with SandboxPool(
+    directory="/path/to/your/scripts",
+    package_cache_dir="/path/to/shared/pyodide-cache",
+    workers=5,
+) as pool:
+    await pool.install_packages(["requests"])
+    await pool.run_script("app.py")
+```
+
+When running the stdio worker or HTTP server **directly** with `deno run`, set the same cache location with:
+
+```bash
+export PYODIDE_PACKAGE_CACHE_DIR="/path/to/shared/pyodide-cache"
+```
 
 **Smoke tests (after `uv sync`):**
 
 ```bash
 uv run python tests/test_asyncio_sandbox_pool.py
 uv run python tests/test_stdio_worker_from_python.py
+uv run python tests/test_package_cache_separate.py
 ```
 
 **Deno tests (stdio worker integration):**

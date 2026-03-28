@@ -1,5 +1,6 @@
 python-sandbox-tool
 .venv/
+.pyodide-package-cache/
 *.whl__pycache__/
 __pycache__/
 python_sandbox_client/__pycache__/

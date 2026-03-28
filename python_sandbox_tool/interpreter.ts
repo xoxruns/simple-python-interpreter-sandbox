@@ -1,4 +1,30 @@
+/// <reference lib="deno.ns" />
 import { loadPyodide } from "pyodide";
+
+type LoadedPyodide = Awaited<ReturnType<typeof loadPyodide>>;
+
+/** Writable host directory for Pyodide/micropip wheel cache (independent of script mount). */
+function resolvePackageCacheDir(explicit?: string): string {
+    if (explicit !== undefined && explicit.length > 0) {
+        return explicit;
+    }
+    const fromEnv = Deno.env.get("PYODIDE_PACKAGE_CACHE_DIR");
+    if (fromEnv !== undefined && fromEnv.length > 0) {
+        return fromEnv;
+    }
+    const home = Deno.env.get("HOME") ?? Deno.env.get("USERPROFILE");
+    if (home !== undefined && home.length > 0) {
+        return `${home}/.cache/python-sandbox-pyodide`;
+    }
+    return ".pyodide-package-cache";
+}
+
+export type PythonInstanceOptions = {
+    /** Host path where Pyodide stores downloaded wheels (must be writable by Deno). */
+    packageCacheDir?: string;
+    /** Legacy default directory (overridden by initialize_instance / setdirectory). */
+    directory?: string;
+};
 
 // Safe logging that handles broken pipe errors gracefully
 function safeLog(...args: unknown[]): void {
@@ -13,19 +39,27 @@ function safeLog(...args: unknown[]): void {
 
 export class PythonInstance {
     directory: string;
-    pyodide;
-    cache_directory: string;
+    pyodide!: LoadedPyodide;
+    /** Host path for Pyodide package wheel cache (not the script mount root). */
+    package_cache_directory: string;
     network_patched: boolean;
 
-    constructor(directory = "./") {
-        this.directory = directory;
-        this.cache_directory = directory
+    constructor(options: PythonInstanceOptions | string = {}) {
+        if (typeof options === "string") {
+            this.directory = options;
+            this.package_cache_directory = resolvePackageCacheDir();
+        } else {
+            this.directory = options.directory ?? "./";
+            this.package_cache_directory = resolvePackageCacheDir(
+                options.packageCacheDir,
+            );
+        }
         this.network_patched = false;
     }
 
     async load_pyodide(): Promise<void> {
         this.pyodide = await loadPyodide({
-            packageCacheDir: this.cache_directory
+            packageCacheDir: this.package_cache_directory,
         });
         await this.enableNetworkSupport();
     }
@@ -54,9 +88,9 @@ pyodide_http.patch_all()
         }
     }
 
-    async initialize_instance(directory = "./"): Promise<void> {
+    initialize_instance(directory = "./"): void {
         this.directory = directory;
-        let mountDir = "/mnt";
+        const mountDir = "/mnt";
         this.pyodide.FS.mkdirTree(mountDir);
         this.pyodide.FS.mount(this.pyodide.FS.filesystems.NODEFS, {root: this.directory}, mountDir)
         safeLog(this.pyodide.FS.readdir("/home"));
@@ -76,11 +110,11 @@ pyodide_http.patch_all()
         const stderrChunks: string[] = [];
 
         const restoreStdout = this.pyodide.setStdout({
-            batched: (s: string) => stdoutChunks.push(s)
-        });
+            batched: (s: string) => stdoutChunks.push(s),
+        }) as (() => void) | void;
         const restoreStderr = this.pyodide.setStderr({
-            batched: (s: string) => stderrChunks.push(s)
-        });
+            batched: (s: string) => stderrChunks.push(s),
+        }) as (() => void) | void;
 
         try {
             const code = this.pyodide.FS.readFile(filename, { encoding: "utf8" });
@@ -91,7 +125,6 @@ pyodide_http.patch_all()
                 stderr: stderrChunks.join("")
             };
         } finally {
-            // Restore previous stdout/stderr handlers if available
             if (typeof restoreStdout === "function") restoreStdout();
             if (typeof restoreStderr === "function") restoreStderr();
         }
@@ -117,7 +150,7 @@ result
 `;
                 const exists = await this.pyodide.runPythonAsync(code);
                 results[packageName] = exists;
-            } catch (error) {
+            } catch (_error) {
                 // If there's an error running the code, assume package doesn't exist
                 results[packageName] = false;
             }
@@ -135,7 +168,11 @@ result
         const results: { [packageName: string]: { success: boolean; error?: string } } = {};
 
         // Lazily load micropip only if needed
-        let micropip: any | null = null;
+        type MicropipHandle = {
+            install: (name: string) => Promise<void>;
+            list: () => unknown;
+        };
+        let micropip: MicropipHandle | null = null;
 
         for (const packageName of packageNames) {
             safeLog("starting installing " + packageName)
@@ -156,7 +193,7 @@ result
             try {
                 if (!micropip) {
                     await this.pyodide.loadPackage("micropip");
-                    micropip = this.pyodide.pyimport("micropip");
+                    micropip = this.pyodide.pyimport("micropip") as MicropipHandle;
                 }
                 await micropip.install(packageName);
                 // Verify import works after install

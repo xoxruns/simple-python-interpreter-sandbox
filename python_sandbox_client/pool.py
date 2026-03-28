@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -32,11 +33,13 @@ class _StdioWorker:
         self,
         *,
         directory: str,
+        package_cache_dir: str | None,
         worker_ts: Path,
         deno: str,
         request_timeout: float | None,
     ) -> None:
         self._directory = directory
+        self._package_cache_dir = package_cache_dir
         self._worker_ts = worker_ts
         self._deno = deno
         self._request_timeout = request_timeout
@@ -53,6 +56,10 @@ class _StdioWorker:
         return self._next_req_id
 
     async def start(self) -> None:
+        env = dict(os.environ)
+        if self._package_cache_dir is not None:
+            env["PYODIDE_PACKAGE_CACHE_DIR"] = self._package_cache_dir
+
         self._proc = await asyncio.create_subprocess_exec(
             self._deno,
             "run",
@@ -64,6 +71,7 @@ class _StdioWorker:
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
+            env=env,
         )
         assert self._proc.stdin is not None
         assert self._proc.stdout is not None
@@ -198,11 +206,15 @@ class SandboxPool:
 
     Example::
 
-        async with SandboxPool(directory=\"/path/to/scripts\", workers=5) as pool:
-            r = await pool.run_script(\"foo.py\")
+        async with SandboxPool(
+            directory="/path/to/scripts",
+            package_cache_dir="/path/to/pyodide-cache",
+            workers=5,
+        ) as pool:
+            r = await pool.run_script("foo.py")
             results = await asyncio.gather(
-                pool.run_script(\"a.py\"),
-                pool.run_script(\"b.py\"),
+                pool.run_script("a.py"),
+                pool.run_script("b.py"),
             )
     """
 
@@ -211,6 +223,7 @@ class SandboxPool:
         directory: str | Path,
         *,
         workers: int = 5,
+        package_cache_dir: str | Path | None = None,
         worker_ts: str | Path | None = None,
         deno: str = "deno",
         request_timeout: float | None = 120.0,
@@ -218,6 +231,11 @@ class SandboxPool:
         if workers < 1:
             raise ValueError("workers must be >= 1")
         self._directory = str(Path(directory).resolve())
+        self._package_cache_dir = (
+            str(Path(package_cache_dir).resolve())
+            if package_cache_dir is not None
+            else None
+        )
         self._workers_n = workers
         self._worker_ts = Path(worker_ts).resolve() if worker_ts else _default_worker_ts()
         self._deno = deno
@@ -234,6 +252,7 @@ class SandboxPool:
         self._workers = [
             _StdioWorker(
                 directory=self._directory,
+                package_cache_dir=self._package_cache_dir,
                 worker_ts=self._worker_ts,
                 deno=self._deno,
                 request_timeout=self._request_timeout,
