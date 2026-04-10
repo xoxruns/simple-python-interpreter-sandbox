@@ -222,6 +222,8 @@ Supported packaged targets today:
 - macOS Apple Silicon: `python_sandbox_client/bin/darwin-arm64/python-sandbox-worker`
 - Linux x86_64 glibc: `python_sandbox_client/bin/linux-x86_64-gnu/python-sandbox-worker`
 
+If no local worker binary is present, the client can also download the matching release asset on first use and cache it locally.
+
 For local development from this repo, build the worker first:
 
 ```bash
@@ -278,6 +280,14 @@ To override the bundled worker binary during development or testing:
 
 ```bash
 export PYTHON_SANDBOX_WORKER_BIN="/absolute/path/to/python-sandbox-worker"
+```
+
+To override the worker download cache or release source:
+
+```bash
+export PYTHON_SANDBOX_WORKER_CACHE_DIR="/path/to/cache-root"
+export PYTHON_SANDBOX_WORKER_RELEASE_BASE_URL="https://github.com/xoxruns/simple-python-interpreter-sandbox/releases/download"
+export PYTHON_SANDBOX_WORKER_RELEASE_TAG="v0.1.0"
 ```
 
 When running the stdio worker **directly**, set the same cache location with:

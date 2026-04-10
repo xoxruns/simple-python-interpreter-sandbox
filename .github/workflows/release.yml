@@ -36,20 +36,28 @@ jobs:
           set -euo pipefail
           ./compile.sh "${{ matrix.target }}"
           BINARY_NAME="python-sandbox-worker-${{ matrix.target }}"
+          CHECKSUM_NAME="${BINARY_NAME}.sha256"
           cp "python_sandbox_client/bin/${{ matrix.target }}/python-sandbox-worker" "$BINARY_NAME"
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$BINARY_NAME" > "$CHECKSUM_NAME"
+          else
+            shasum -a 256 "$BINARY_NAME" > "$CHECKSUM_NAME"
+          fi
           echo "binary_name=$BINARY_NAME" >> "$GITHUB_ENV"
+          echo "checksum_name=$CHECKSUM_NAME" >> "$GITHUB_ENV"
 
       - name: Show binary info
         shell: bash
         run: |
           ls -lah
           file "${{ env.binary_name }}" || true
-          shasum -a 256 "${{ env.binary_name }}" 2>/dev/null || (sha256sum "${{ env.binary_name }}" || true)
+          cat "${{ env.checksum_name }}"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ env.binary_name }}
+            ${{ env.checksum_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
