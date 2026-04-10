@@ -4,3 +4,5 @@ python-sandbox-tool
 *.whl__pycache__/
 __pycache__/
 python_sandbox_client/__pycache__/
+.codex
+.tmp-sandbox/

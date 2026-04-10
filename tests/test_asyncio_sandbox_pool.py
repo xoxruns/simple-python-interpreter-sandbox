@@ -1,6 +1,7 @@
 """
 From repo root::
 
+    ./compile.sh
     uv sync
     uv run python tests/test_asyncio_sandbox_pool.py
 """

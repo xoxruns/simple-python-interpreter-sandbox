@@ -3,6 +3,7 @@ Verify Pyodide wheels go to ``package_cache_dir``, not the mounted script direct
 
 From repo root::
 
+    ./compile.sh
     uv sync
     uv run python tests/test_package_cache_separate.py
 """

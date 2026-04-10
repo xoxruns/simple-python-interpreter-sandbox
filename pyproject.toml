@@ -12,3 +12,4 @@ dependencies = []
 
 [tool.hatch.build.targets.wheel]
 packages = ["python_sandbox_client"]
+artifacts = ["python_sandbox_client/bin/**"]

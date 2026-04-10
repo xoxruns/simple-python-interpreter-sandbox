@@ -3,14 +3,61 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import platform
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
-def _default_worker_ts() -> Path:
-    """Repo layout: .../python_sandbox_client/pool.py → repo root."""
-    return Path(__file__).resolve().parent.parent / "python_sandbox_tool" / "main_stdio.ts"
+_BUNDLED_WORKER_ENV_VAR = "PYTHON_SANDBOX_WORKER_BIN"
+_BUNDLED_WORKER_NAME = "python-sandbox-worker"
+
+
+def _platform_tag(system: str | None = None, machine: str | None = None) -> str:
+    system_name = system or platform.system()
+    machine_name = (machine or platform.machine()).lower()
+
+    if system_name == "Darwin" and machine_name in {"arm64", "aarch64"}:
+        return "darwin-arm64"
+    if system_name == "Linux" and machine_name in {"x86_64", "amd64"}:
+        return "linux-x86_64-gnu"
+
+    raise RuntimeError(
+        "Unsupported platform for bundled sandbox worker: "
+        f"{system_name} {machine_name}. "
+        "Supported targets are macOS arm64 and Linux x86_64 glibc.",
+    )
+
+
+def _bundled_worker_path() -> Path:
+    package_root = Path(__file__).resolve().parent
+    return package_root / "bin" / _platform_tag() / _BUNDLED_WORKER_NAME
+
+
+def _default_worker_bin() -> Path:
+    override = os.environ.get(_BUNDLED_WORKER_ENV_VAR)
+    if override:
+        return Path(override).expanduser().resolve()
+    return _bundled_worker_path()
+
+
+def _missing_worker_error(worker_bin: Path) -> FileNotFoundError:
+    return FileNotFoundError(
+        "sandbox worker binary not found: "
+        f"{worker_bin}. Build it with ./compile.sh or set "
+        f"{_BUNDLED_WORKER_ENV_VAR} to an explicit worker binary.",
+    )
+
+
+def _ensure_executable(worker_bin: Path) -> None:
+    if os.name == "nt":
+        return
+
+    mode = worker_bin.stat().st_mode
+    desired = mode | stat.S_IXUSR
+    if desired != mode:
+        worker_bin.chmod(desired)
 
 
 @dataclass(frozen=True)
@@ -34,14 +81,12 @@ class _StdioWorker:
         *,
         directory: str,
         package_cache_dir: str | None,
-        worker_ts: Path,
-        deno: str,
+        worker_bin: Path,
         request_timeout: float | None,
     ) -> None:
         self._directory = directory
         self._package_cache_dir = package_cache_dir
-        self._worker_ts = worker_ts
-        self._deno = deno
+        self._worker_bin = worker_bin
         self._request_timeout = request_timeout
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -61,13 +106,7 @@ class _StdioWorker:
             env["PYODIDE_PACKAGE_CACHE_DIR"] = self._package_cache_dir
 
         self._proc = await asyncio.create_subprocess_exec(
-            self._deno,
-            "run",
-            "--allow-env",
-            "--allow-net",
-            "--allow-read",
-            "--allow-write",
-            str(self._worker_ts),
+            str(self._worker_bin),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -224,8 +263,7 @@ class SandboxPool:
         *,
         workers: int = 5,
         package_cache_dir: str | Path | None = None,
-        worker_ts: str | Path | None = None,
-        deno: str = "deno",
+        worker_bin: str | Path | None = None,
         request_timeout: float | None = 120.0,
     ) -> None:
         if workers < 1:
@@ -237,24 +275,27 @@ class SandboxPool:
             else None
         )
         self._workers_n = workers
-        self._worker_ts = Path(worker_ts).resolve() if worker_ts else _default_worker_ts()
-        self._deno = deno
+        self._worker_bin = (
+            Path(worker_bin).expanduser().resolve()
+            if worker_bin is not None
+            else _default_worker_bin()
+        )
         self._request_timeout = request_timeout
         self._workers: list[_StdioWorker] = []
         self._rr = 0
         self._rr_lock = asyncio.Lock()
 
     async def __aenter__(self) -> SandboxPool:
-        if not self._worker_ts.is_file():
-            raise FileNotFoundError(
-                f"stdio worker script not found: {self._worker_ts}",
-            )
+        if not self._worker_bin.is_file():
+            raise _missing_worker_error(self._worker_bin)
+
+        _ensure_executable(self._worker_bin)
+
         self._workers = [
             _StdioWorker(
                 directory=self._directory,
                 package_cache_dir=self._package_cache_dir,
-                worker_ts=self._worker_ts,
-                deno=self._deno,
+                worker_bin=self._worker_bin,
                 request_timeout=self._request_timeout,
             )
             for _ in range(self._workers_n)
