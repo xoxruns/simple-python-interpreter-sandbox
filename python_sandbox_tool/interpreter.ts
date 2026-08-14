@@ -121,8 +121,10 @@ pyodide_http.patch_all()
             const result = await this.pyodide.runPythonAsync(code);
             return {
                 result,
-                stdout: stdoutChunks.join(""),
-                stderr: stderrChunks.join("")
+                // Pyodide's batched callback delivers each line *without* its trailing
+                // newline, so we must join with "\n" to reconstruct readable output.
+                stdout: stdoutChunks.join("\n"),
+                stderr: stderrChunks.join("\n")
             };
         } finally {
             if (typeof restoreStdout === "function") restoreStdout();
