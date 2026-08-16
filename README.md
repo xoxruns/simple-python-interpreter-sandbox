@@ -179,10 +179,16 @@ curl -X POST http://localhost:45555/runscript \
 
 If you prefer not to run an HTTP server, use the stdio worker. It loads Pyodide once, then reads **newline-delimited JSON** on **stdin** and writes **one JSON object per line** on **stdout**. Debug logs go to **stderr** so stdout stays machine-readable.
 
+Build the worker for the current host:
+
+```bash
+./compile.sh
+```
+
 Start it:
 
 ```bash
-deno run --allow-env --allow-net --allow-read --allow-write python_sandbox_tool/main_stdio.ts
+./python_sandbox_client/bin/<target>/python-sandbox-worker
 ```
 
 Supported `op` values (each message is a single JSON object; include optional `id` for correlation):
@@ -202,16 +208,29 @@ printf '%s\n' \
   '{"op":"setdirectory","directory":"/absolute/path/to/python/files"}' \
   '{"op":"runscript","filename":"script.py"}' \
   '{"op":"shutdown"}' \
-| deno run --allow-env --allow-net --allow-read --allow-write python_sandbox_tool/main_stdio.ts
+| ./python_sandbox_client/bin/<target>/python-sandbox-worker
 ```
 
 ### Python client (`python_sandbox_client`, asyncio)
 
 The repo includes a small **asyncio** client that spawns one or more stdio worker subprocesses and exposes a pool API (good for running many scripts with limited concurrency, e.g. five workers).
 
-**Requirements:** [Deno](https://deno.land/) on `PATH`, and [uv](https://docs.astral.sh/uv/) for installing the Python package.
+Packaged use does **not** require `deno` on `PATH`. The Python client resolves a bundled compiled stdio worker binary for the current platform.
 
-From the repository root:
+Supported packaged targets today:
+
+- macOS Apple Silicon: `python_sandbox_client/bin/darwin-arm64/python-sandbox-worker`
+- Linux x86_64 glibc: `python_sandbox_client/bin/linux-x86_64-gnu/python-sandbox-worker`
+
+If no local worker binary is present, the client can also download the matching release asset on first use and cache it locally.
+
+For local development from this repo, build the worker first:
+
+```bash
+./compile.sh
+```
+
+Then install the Python package environment:
 
 ```bash
 uv sync
@@ -241,8 +260,8 @@ asyncio.run(main())
 
 - **`directory`**: host folder whose files appear under `/mnt` in the sandbox (same idea as `POST /setdirectory`).
 - **`package_cache_dir`**: optional writable folder where Pyodide/micropip store downloaded wheels. Use this so packages are **not** written next to your scripts. If omitted, the worker uses the environment variable `PYODIDE_PACKAGE_CACHE_DIR`, or falls back to `~/.cache/python-sandbox-pyodide` (or `.pyodide-package-cache` in the current directory if no home directory is available).
-- **`workers`**: number of separate Deno/Pyodide processes; use this for parallelism.
-- **`worker_ts`**: optional path to `main_stdio.ts`. If omitted, the client assumes the default layout next to this repo (`python_sandbox_tool/main_stdio.ts`).
+- **`workers`**: number of separate worker processes; use this for parallelism.
+- **`worker_bin`**: optional path to an explicit compiled worker binary. If omitted, the client first checks `PYTHON_SANDBOX_WORKER_BIN`, then falls back to the bundled binary for the current platform.
 - **`SandboxPool`** also provides `check_packages(...)` and `install_packages(...)` mapped to the same stdio ops.
 
 Example with scripts in one place and wheels in another:
@@ -257,13 +276,27 @@ async with SandboxPool(
     await pool.run_script("app.py")
 ```
 
-When running the stdio worker or HTTP server **directly** with `deno run`, set the same cache location with:
+To override the bundled worker binary during development or testing:
+
+```bash
+export PYTHON_SANDBOX_WORKER_BIN="/absolute/path/to/python-sandbox-worker"
+```
+
+To override the worker download cache or release source:
+
+```bash
+export PYTHON_SANDBOX_WORKER_CACHE_DIR="/path/to/cache-root"
+export PYTHON_SANDBOX_WORKER_RELEASE_BASE_URL="https://github.com/xoxruns/simple-python-interpreter-sandbox/releases/download"
+export PYTHON_SANDBOX_WORKER_RELEASE_TAG="v0.1.0"
+```
+
+When running the stdio worker **directly**, set the same cache location with:
 
 ```bash
 export PYODIDE_PACKAGE_CACHE_DIR="/path/to/shared/pyodide-cache"
 ```
 
-**Smoke tests (after `uv sync`):**
+**Smoke tests (after `./compile.sh` and `uv sync`):**
 
 ```bash
 uv run python tests/test_asyncio_sandbox_pool.py
@@ -278,21 +311,23 @@ cd python_sandbox_tool
 deno task test
 ```
 
-## Building a Binary
+## Building Bundled Workers
 
-To create a standalone executable:
+`./compile.sh` compiles the stdio worker entrypoint, `python_sandbox_tool/main_stdio.ts`, into package-owned binaries under `python_sandbox_client/bin`.
 
-```bash
-deno compile --allow-read --allow-net --allow-env --output python-sandbox-tool python_sandbox_tool/main.ts
-```
-
-This creates a self-contained binary that doesn't require Deno to be installed. The binary includes all dependencies and can be run directly:
+By default it builds the worker for the current host platform:
 
 ```bash
-./python-sandbox-tool
+./compile.sh
 ```
 
-To compile the stdio worker instead of the HTTP server, point `deno compile` at `python_sandbox_tool/main_stdio.ts` (same `--allow-*` flags as above).
+You can also build the supported targets explicitly:
+
+```bash
+./compile.sh darwin-arm64 linux-x86_64-gnu
+```
+
+GitHub Actions builds the same bundled worker targets on pull requests and `main`, uploads them as workflow artifacts, and publishes them as release assets on version tags.
 
 ## Limitations
 

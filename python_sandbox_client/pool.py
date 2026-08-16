@@ -3,14 +3,157 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import platform
+import stat
+import tempfile
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Any
 
 
-def _default_worker_ts() -> Path:
-    """Repo layout: .../python_sandbox_client/pool.py → repo root."""
-    return Path(__file__).resolve().parent.parent / "python_sandbox_tool" / "main_stdio.ts"
+_BUNDLED_WORKER_ENV_VAR = "PYTHON_SANDBOX_WORKER_BIN"
+_WORKER_CACHE_DIR_ENV_VAR = "PYTHON_SANDBOX_WORKER_CACHE_DIR"
+_WORKER_RELEASE_BASE_URL_ENV_VAR = "PYTHON_SANDBOX_WORKER_RELEASE_BASE_URL"
+_WORKER_RELEASE_TAG_ENV_VAR = "PYTHON_SANDBOX_WORKER_RELEASE_TAG"
+_BUNDLED_WORKER_NAME = "python-sandbox-worker"
+_DEFAULT_RELEASE_BASE_URL = (
+    "https://github.com/xoxruns/simple-python-interpreter-sandbox/releases/download"
+)
+
+
+def _platform_tag(system: str | None = None, machine: str | None = None) -> str:
+    system_name = system or platform.system()
+    machine_name = (machine or platform.machine()).lower()
+
+    if system_name == "Darwin" and machine_name in {"arm64", "aarch64"}:
+        return "darwin-arm64"
+    if system_name == "Linux" and machine_name in {"x86_64", "amd64"}:
+        return "linux-x86_64-gnu"
+
+    raise RuntimeError(
+        "Unsupported platform for bundled sandbox worker: "
+        f"{system_name} {machine_name}. "
+        "Supported targets are macOS arm64 and Linux x86_64 glibc.",
+    )
+
+
+def _bundled_worker_path() -> Path:
+    package_root = Path(__file__).resolve().parent
+    return package_root / "bin" / _platform_tag() / _BUNDLED_WORKER_NAME
+
+
+def _release_tag() -> str:
+    override = os.environ.get(_WORKER_RELEASE_TAG_ENV_VAR)
+    if override:
+        return override
+
+    try:
+        version = metadata.version("python-sandbox-client")
+    except metadata.PackageNotFoundError:
+        version = "0.1.0"
+    return f"v{version}"
+
+
+def _worker_release_url(platform_tag: str) -> str:
+    base_url = os.environ.get(_WORKER_RELEASE_BASE_URL_ENV_VAR, _DEFAULT_RELEASE_BASE_URL)
+    return "/".join(
+        [
+            base_url.rstrip("/"),
+            _release_tag(),
+            f"{_BUNDLED_WORKER_NAME}-{platform_tag}",
+        ],
+    )
+
+
+def _default_cache_root() -> Path:
+    override = os.environ.get(_WORKER_CACHE_DIR_ENV_VAR)
+    if override:
+        return Path(override).expanduser().resolve()
+
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache:
+        return Path(xdg_cache).expanduser().resolve() / "python-sandbox-client"
+
+    home = Path.home()
+    return home / ".cache" / "python-sandbox-client"
+
+
+def _cached_worker_path(platform_tag: str) -> Path:
+    return _default_cache_root() / "workers" / _release_tag() / platform_tag / _BUNDLED_WORKER_NAME
+
+
+def _download_worker(platform_tag: str, destination: Path) -> Path:
+    url = _worker_release_url(platform_tag)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+
+    with tempfile.NamedTemporaryFile(
+        dir=destination.parent,
+        prefix=f"{_BUNDLED_WORKER_NAME}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temp_file:
+        temp_path = Path(temp_file.name)
+
+    try:
+        with urllib.request.urlopen(url, timeout=60) as response:
+            with temp_path.open("wb") as output:
+                while True:
+                    chunk = response.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    output.write(chunk)
+        temp_path.replace(destination)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+
+    _ensure_executable(destination)
+    return destination
+
+
+def _default_worker_bin() -> Path:
+    override = os.environ.get(_BUNDLED_WORKER_ENV_VAR)
+    if override:
+        return Path(override).expanduser().resolve()
+
+    bundled = _bundled_worker_path()
+    if bundled.is_file():
+        return bundled
+
+    platform_tag = _platform_tag()
+    cached = _cached_worker_path(platform_tag)
+    if cached.is_file():
+        return cached
+
+    try:
+        return _download_worker(platform_tag, cached)
+    except urllib.error.URLError as exc:
+        raise FileNotFoundError(
+            "sandbox worker binary not found locally and automatic download failed: "
+            f"{exc}. Set {_BUNDLED_WORKER_ENV_VAR} to an explicit worker binary, "
+            f"or provide a cached worker under {cached}.",
+        ) from exc
+
+
+def _missing_worker_error(worker_bin: Path) -> FileNotFoundError:
+    return FileNotFoundError(
+        "sandbox worker binary not found: "
+        f"{worker_bin}. Set {_BUNDLED_WORKER_ENV_VAR} to an explicit worker binary, "
+        f"or configure release bootstrap with {_WORKER_RELEASE_BASE_URL_ENV_VAR}.",
+    )
+
+
+def _ensure_executable(worker_bin: Path) -> None:
+    if os.name == "nt":
+        return
+
+    mode = worker_bin.stat().st_mode
+    desired = mode | stat.S_IXUSR
+    if desired != mode:
+        worker_bin.chmod(desired)
 
 
 @dataclass(frozen=True)
@@ -34,14 +177,12 @@ class _StdioWorker:
         *,
         directory: str,
         package_cache_dir: str | None,
-        worker_ts: Path,
-        deno: str,
+        worker_bin: Path,
         request_timeout: float | None,
     ) -> None:
         self._directory = directory
         self._package_cache_dir = package_cache_dir
-        self._worker_ts = worker_ts
-        self._deno = deno
+        self._worker_bin = worker_bin
         self._request_timeout = request_timeout
         self._proc: asyncio.subprocess.Process | None = None
         self._reader_task: asyncio.Task[None] | None = None
@@ -61,13 +202,7 @@ class _StdioWorker:
             env["PYODIDE_PACKAGE_CACHE_DIR"] = self._package_cache_dir
 
         self._proc = await asyncio.create_subprocess_exec(
-            self._deno,
-            "run",
-            "--allow-env",
-            "--allow-net",
-            "--allow-read",
-            "--allow-write",
-            str(self._worker_ts),
+            str(self._worker_bin),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -224,8 +359,7 @@ class SandboxPool:
         *,
         workers: int = 5,
         package_cache_dir: str | Path | None = None,
-        worker_ts: str | Path | None = None,
-        deno: str = "deno",
+        worker_bin: str | Path | None = None,
         request_timeout: float | None = 120.0,
     ) -> None:
         if workers < 1:
@@ -237,24 +371,30 @@ class SandboxPool:
             else None
         )
         self._workers_n = workers
-        self._worker_ts = Path(worker_ts).resolve() if worker_ts else _default_worker_ts()
-        self._deno = deno
+        self._worker_bin_override = (
+            Path(worker_bin).expanduser().resolve()
+            if worker_bin is not None
+            else None
+        )
+        self._worker_bin: Path | None = None
         self._request_timeout = request_timeout
         self._workers: list[_StdioWorker] = []
         self._rr = 0
         self._rr_lock = asyncio.Lock()
 
     async def __aenter__(self) -> SandboxPool:
-        if not self._worker_ts.is_file():
-            raise FileNotFoundError(
-                f"stdio worker script not found: {self._worker_ts}",
-            )
+        self._worker_bin = self._worker_bin_override or _default_worker_bin()
+
+        if not self._worker_bin.is_file():
+            raise _missing_worker_error(self._worker_bin)
+
+        _ensure_executable(self._worker_bin)
+
         self._workers = [
             _StdioWorker(
                 directory=self._directory,
                 package_cache_dir=self._package_cache_dir,
-                worker_ts=self._worker_ts,
-                deno=self._deno,
+                worker_bin=self._worker_bin,
                 request_timeout=self._request_timeout,
             )
             for _ in range(self._workers_n)

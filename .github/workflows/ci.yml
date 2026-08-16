@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-and-verify:
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: linux-x86_64-gnu
+          - runner: macos-14
+            target: darwin-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.7.3
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build compiled worker
+        shell: bash
+        run: ./compile.sh ${{ matrix.target }}
+
+      - name: Show bundled worker info
+        shell: bash
+        run: |
+          set -euo pipefail
+          BINARY="python_sandbox_client/bin/${{ matrix.target }}/python-sandbox-worker"
+          test -f "$BINARY"
+          ls -lh "$BINARY"
+          file "$BINARY" || true
+
+      - name: Upload bundled worker artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-sandbox-worker-${{ matrix.target }}
+          path: python_sandbox_client/bin/${{ matrix.target }}/python-sandbox-worker
+
+      - name: Install Python dependencies
+        shell: bash
+        run: uv sync
+
+      - name: Verify Python client works without deno on PATH
+        shell: bash
+        run: |
+          set -euo pipefail
+          DENO_DIR="$(dirname "$(command -v deno)")"
+          FILTERED_PATH="$(printf '%s' "$PATH" | tr ':' '\n' | grep -Fvx "$DENO_DIR" | paste -sd ':' -)"
+          if PATH="$FILTERED_PATH" command -v deno >/dev/null 2>&1; then
+            echo "deno still present on PATH during runtime verification" >&2
+            exit 1
+          fi
+          PATH="$FILTERED_PATH" uv run python tests/test_asyncio_sandbox_pool.py
+          PATH="$FILTERED_PATH" uv run python tests/test_stdio_worker_from_python.py
